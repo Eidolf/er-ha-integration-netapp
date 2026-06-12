@@ -1,0 +1,26 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Connect to NetApp ONTAP",
+        "description": "Enter the connection details for your NetApp ONTAP cluster.",
+        "data": {
+          "host": "Host / IP Address",
+          "port": "Port",
+          "username": "Username",
+          "password": "Password",
+          "api_token": "API Token (Optional)",
+          "verify_ssl": "Verify SSL Certificate"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Failed to connect, please check the host and port.",
+      "invalid_auth": "Invalid authentication credentials.",
+      "unknown": "Unexpected error occurred."
+    },
+    "abort": {
+      "already_configured": "Device is already configured"
+    }
+  }
+}
