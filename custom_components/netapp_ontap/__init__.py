@@ -6,7 +6,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
-from .const import DOMAIN, PLATFORMS, CONF_VERIFY_SSL, CONF_API_TOKEN
+from .const import DOMAIN, PLATFORMS, CONF_VERIFY_SSL, CONF_API_TOKEN, CONF_DETAIL_LEVEL
 from .api import NetAppOntapAPI
 from .coordinator import NetAppOntapDataUpdateCoordinator
 
@@ -22,6 +22,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     password = entry.data.get("password")
     api_token = entry.data.get(CONF_API_TOKEN)
     verify_ssl = entry.data.get(CONF_VERIFY_SSL, False)
+    detail_level = entry.data.get(CONF_DETAIL_LEVEL, "standard")
 
     session = async_get_clientsession(hass)
     
@@ -35,7 +36,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         session=session,
     )
 
-    coordinator = NetAppOntapDataUpdateCoordinator(hass, api)
+    coordinator = NetAppOntapDataUpdateCoordinator(hass, api, detail_level=detail_level)
 
     # Perform initial update
     await coordinator.async_config_entry_first_refresh()

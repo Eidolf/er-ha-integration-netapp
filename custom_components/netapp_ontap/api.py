@@ -137,6 +137,18 @@ class NetAppOntapAPI:
         """Fetch recent events or EMS messages."""
         return await self._request("GET", "/api/support/ems/events", params={"max_records": 20, "order_by": "time desc"})
 
+    async def get_cloud_targets(self) -> Dict[str, Any]:
+        """Fetch cloud (object storage) targets."""
+        return await self._request("GET", "/api/cloud/targets", params={"fields": "*"})
+
+    async def get_svms(self) -> Dict[str, Any]:
+        """Fetch storage virtual machines (SVMs)."""
+        return await self._request("GET", "/api/svm/svms", params={"fields": "*"})
+
+    async def get_licenses(self) -> Dict[str, Any]:
+        """Fetch licenses."""
+        return await self._request("GET", "/api/cluster/licensing/licenses", params={"fields": "*"})
+
     async def set_volume_state(self, volume_uuid: str, state: str) -> bool:
         """Modify volume state (e.g. online, offline)."""
         # ONTAP REST API uses PATCH /api/storage/volumes/{uuid}

@@ -8,7 +8,16 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.data_entry_flow import FlowResult
 
-from .const import DOMAIN, CONF_VERIFY_SSL, CONF_API_TOKEN, DEFAULT_PORT
+from .const import (
+    DOMAIN,
+    CONF_VERIFY_SSL,
+    CONF_API_TOKEN,
+    CONF_DETAIL_LEVEL,
+    DEFAULT_PORT,
+    DETAIL_LEVEL_STANDARD,
+    DETAIL_LEVEL_ADVANCED,
+    DETAIL_LEVEL_ALL,
+)
 from .api import NetAppOntapAPI
 
 _LOGGER = logging.getLogger(__name__)
@@ -21,6 +30,9 @@ USER_SCHEMA = vol.Schema(
         vol.Optional("password"): str,
         vol.Optional(CONF_API_TOKEN): str,
         vol.Required(CONF_VERIFY_SSL, default=False): bool,
+        vol.Required(CONF_DETAIL_LEVEL, default=DETAIL_LEVEL_STANDARD): vol.In(
+            [DETAIL_LEVEL_STANDARD, DETAIL_LEVEL_ADVANCED, DETAIL_LEVEL_ALL]
+        ),
     }
 )
 

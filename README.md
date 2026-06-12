@@ -1,6 +1,8 @@
 # Modern Home Assistant Integration for NetApp ONTAP (9.8P21+)
 
-![NetApp ONTAP HA Logo](logo.png)
+<p align="center">
+  <img src="logo.png" width="160" alt="NetApp ONTAP Logo" />
+</p>
 
 A modern, highly visual Home Assistant Custom Component integration to monitor and manage NetApp ONTAP storage systems.
 

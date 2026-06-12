@@ -18,10 +18,12 @@ class NetAppOntapDataUpdateCoordinator(DataUpdateCoordinator[Dict[str, Any]]):
         self,
         hass: HomeAssistant,
         api: NetAppOntapAPI,
+        detail_level: str,
         update_interval: int = DEFAULT_UPDATE_INTERVAL,
     ) -> None:
         """Initialize."""
         self.api = api
+        self.detail_level = detail_level
         
         super().__init__(
             hass,
@@ -33,24 +35,45 @@ class NetAppOntapDataUpdateCoordinator(DataUpdateCoordinator[Dict[str, Any]]):
     async def _async_update_data(self) -> Dict[str, Any]:
         """Fetch data from NetApp ONTAP REST API."""
         try:
-            # Gather all system parameters concurrently
-            # cluster info, nodes, volumes, aggregates, interfaces, and events
-            _LOGGER.debug("Fetching latest metrics from NetApp ONTAP cluster")
+            _LOGGER.debug("Fetching latest metrics from NetApp ONTAP cluster (Level: %s)", self.detail_level)
             
             cluster_info = await self.api.get_cluster_info()
             nodes_data = await self.api.get_nodes()
             volumes_data = await self.api.get_volumes()
             aggregates_data = await self.api.get_aggregates()
-            interfaces_data = await self.api.get_interfaces()
-            events_data = await self.api.get_events()
+
+            interfaces = []
+            events = []
+            cloud_targets = []
+            svms = []
+            licenses = []
+
+            # Advanced or All Detail Level polls more endpoints
+            if self.detail_level in ("advanced", "all"):
+                interfaces_data = await self.api.get_interfaces()
+                interfaces = interfaces_data.get("records", [])
+                events_data = await self.api.get_events()
+                events = events_data.get("records", [])
+
+            # All Detail Level also polls cloud, svm, licenses
+            if self.detail_level == "all":
+                cloud_data = await self.api.get_cloud_targets()
+                cloud_targets = cloud_data.get("records", [])
+                svm_data = await self.api.get_svms()
+                svms = svm_data.get("records", [])
+                license_data = await self.api.get_licenses()
+                licenses = license_data.get("records", [])
 
             return {
                 "cluster": cluster_info,
                 "nodes": nodes_data.get("records", []),
                 "volumes": volumes_data.get("records", []),
                 "aggregates": aggregates_data.get("records", []),
-                "interfaces": interfaces_data.get("records", []),
-                "events": events_data.get("records", []),
+                "interfaces": interfaces,
+                "events": events,
+                "cloud_targets": cloud_targets,
+                "svms": svms,
+                "licenses": licenses,
             }
 
         except Exception as err:

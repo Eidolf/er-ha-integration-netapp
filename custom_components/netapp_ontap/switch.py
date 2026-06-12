@@ -1,10 +1,11 @@
 """Switch entities for NetApp ONTAP."""
 import logging
-from typing import Any
+from typing import Any, Dict
 
 from homeassistant.components.switch import SwitchEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
@@ -53,6 +54,19 @@ class NetAppOntapVolumeSwitch(CoordinatorEntity[NetAppOntapDataUpdateCoordinator
         self._attr_name = f"NetApp Volume {vol_name} Enabled"
         self._attr_unique_id = f"{entry.entry_id}_vol_switch_{vol_uuid}"
         self._attr_icon = "mdi:power"
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        """Return device info linking to the Volume device."""
+        cluster_info = self.coordinator.data.get("cluster", {})
+        cluster_uuid = cluster_info.get("uuid", self.entry.entry_id)
+        return DeviceInfo(
+            identifiers={(DOMAIN, f"volume_{self.vol_uuid}")},
+            name=f"Volume: {self.vol_name}",
+            manufacturer="NetApp",
+            model="ONTAP Volume",
+            via_device=(DOMAIN, f"cluster_{cluster_uuid}"),
+        )
 
     @property
     def is_on(self) -> bool:

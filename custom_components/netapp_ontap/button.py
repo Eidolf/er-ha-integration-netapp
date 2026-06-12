@@ -1,10 +1,12 @@
 """Button entities for NetApp ONTAP."""
 from datetime import datetime
 import logging
+from typing import Dict
 
 from homeassistant.components.button import ButtonEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
@@ -53,6 +55,19 @@ class NetAppOntapSnapshotButton(CoordinatorEntity[NetAppOntapDataUpdateCoordinat
         self._attr_name = f"NetApp Volume {vol_name} Create Snapshot"
         self._attr_unique_id = f"{entry.entry_id}_snapshot_btn_{vol_uuid}"
         self._attr_icon = "mdi:camera"
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        """Return device info linking to the Volume device."""
+        cluster_info = self.coordinator.data.get("cluster", {})
+        cluster_uuid = cluster_info.get("uuid", self.entry.entry_id)
+        return DeviceInfo(
+            identifiers={(DOMAIN, f"volume_{self.vol_uuid}")},
+            name=f"Volume: {self.vol_name}",
+            manufacturer="NetApp",
+            model="ONTAP Volume",
+            via_device=(DOMAIN, f"cluster_{cluster_uuid}"),
+        )
 
     async def async_press(self) -> None:
         """Handle button press."""

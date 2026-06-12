@@ -7,6 +7,7 @@ from homeassistant.components.binary_sensor import (
 )
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
@@ -62,10 +63,21 @@ class NetAppOntapClusterHealthSensor(CoordinatorEntity[NetAppOntapDataUpdateCoor
         self._attr_device_class = BinarySensorDeviceClass.PROBLEM
 
     @property
+    def device_info(self) -> DeviceInfo:
+        """Return device info linking to the Cluster device."""
+        cluster_info = self.coordinator.data.get("cluster", {})
+        cluster_uuid = cluster_info.get("uuid", self.entry.entry_id)
+        return DeviceInfo(
+            identifiers={(DOMAIN, f"cluster_{cluster_uuid}")},
+            name=f"Cluster: {cluster_info.get('name', self.entry.title)}",
+            manufacturer="NetApp",
+            model="ONTAP Cluster",
+            sw_version=cluster_info.get("version"),
+        )
+
+    @property
     def is_on(self) -> bool:
         """Return true if there is a problem (cluster not healthy)."""
-        # "state" in REST API is typically true/false for health
-        # e.g., cluster status contains "healthy"
         healthy = self.coordinator.data.get("cluster", {}).get("healthy")
         if healthy is None:
             return False
@@ -86,9 +98,34 @@ class NetAppOntapNodeHealthSensor(CoordinatorEntity[NetAppOntapDataUpdateCoordin
         super().__init__(coordinator)
         self.node_uuid = node_uuid
         self.node_name = node_name
+        self.entry = entry
         self._attr_name = f"NetApp Node {node_name} Health"
         self._attr_unique_id = f"{entry.entry_id}_node_health_{node_uuid}"
         self._attr_device_class = BinarySensorDeviceClass.PROBLEM
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        """Return device info linking to the Node device."""
+        cluster_info = self.coordinator.data.get("cluster", {})
+        cluster_uuid = cluster_info.get("uuid", self.entry.entry_id)
+        
+        # Find node model
+        node_model = "ONTAP Node"
+        node_version = None
+        nodes = self.coordinator.data.get("nodes", [])
+        for node in nodes:
+            if node.get("uuid") == self.node_uuid:
+                node_model = node.get("model", "ONTAP Node")
+                node_version = node.get("version")
+                
+        return DeviceInfo(
+            identifiers={(DOMAIN, f"node_{self.node_uuid}")},
+            name=f"Node: {self.node_name}",
+            manufacturer="NetApp",
+            model=node_model,
+            sw_version=node_version,
+            via_device=(DOMAIN, f"cluster_{cluster_uuid}"),
+        )
 
     @property
     def is_on(self) -> bool:
@@ -96,7 +133,6 @@ class NetAppOntapNodeHealthSensor(CoordinatorEntity[NetAppOntapDataUpdateCoordin
         nodes = self.coordinator.data.get("nodes", [])
         for node in nodes:
             if node.get("uuid") == self.node_uuid:
-                # check if node state is "healthy"
                 state = node.get("state")
                 return state != "healthy"
         return True
@@ -116,9 +152,23 @@ class NetAppOntapVolumeStatusSensor(CoordinatorEntity[NetAppOntapDataUpdateCoord
         super().__init__(coordinator)
         self.vol_uuid = vol_uuid
         self.vol_name = vol_name
+        self.entry = entry
         self._attr_name = f"NetApp Volume {vol_name} Status"
         self._attr_unique_id = f"{entry.entry_id}_vol_status_{vol_uuid}"
         self._attr_device_class = BinarySensorDeviceClass.PROBLEM
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        """Return device info linking to the Volume device."""
+        cluster_info = self.coordinator.data.get("cluster", {})
+        cluster_uuid = cluster_info.get("uuid", self.entry.entry_id)
+        return DeviceInfo(
+            identifiers={(DOMAIN, f"volume_{self.vol_uuid}")},
+            name=f"Volume: {self.vol_name}",
+            manufacturer="NetApp",
+            model="ONTAP Volume",
+            via_device=(DOMAIN, f"cluster_{cluster_uuid}"),
+        )
 
     @property
     def is_on(self) -> bool:
