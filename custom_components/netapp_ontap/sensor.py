@@ -91,12 +91,19 @@ class NetAppOntapTopologySensor(CoordinatorEntity[NetAppOntapDataUpdateCoordinat
         """Return device info linking to the Cluster device."""
         cluster_info = self.coordinator.data.get("cluster", {})
         cluster_uuid = cluster_info.get("uuid", self.entry.entry_id)
+        
+        version_info = cluster_info.get("version")
+        if isinstance(version_info, dict):
+            sw_version = version_info.get("full")
+        else:
+            sw_version = version_info
+
         return DeviceInfo(
             identifiers={(DOMAIN, f"cluster_{cluster_uuid}")},
             name=f"Cluster: {cluster_info.get('name', self.entry.title)}",
             manufacturer="NetApp",
             model="ONTAP Cluster",
-            sw_version=cluster_info.get("version"),
+            sw_version=sw_version,
         )
 
     @property

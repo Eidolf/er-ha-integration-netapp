@@ -67,12 +67,19 @@ class NetAppOntapClusterHealthSensor(CoordinatorEntity[NetAppOntapDataUpdateCoor
         """Return device info linking to the Cluster device."""
         cluster_info = self.coordinator.data.get("cluster", {})
         cluster_uuid = cluster_info.get("uuid", self.entry.entry_id)
+        
+        version_info = cluster_info.get("version")
+        if isinstance(version_info, dict):
+            sw_version = version_info.get("full")
+        else:
+            sw_version = version_info
+
         return DeviceInfo(
             identifiers={(DOMAIN, f"cluster_{cluster_uuid}")},
             name=f"Cluster: {cluster_info.get('name', self.entry.title)}",
             manufacturer="NetApp",
             model="ONTAP Cluster",
-            sw_version=cluster_info.get("version"),
+            sw_version=sw_version,
         )
 
     @property
@@ -116,7 +123,11 @@ class NetAppOntapNodeHealthSensor(CoordinatorEntity[NetAppOntapDataUpdateCoordin
         for node in nodes:
             if node.get("uuid") == self.node_uuid:
                 node_model = node.get("model", "ONTAP Node")
-                node_version = node.get("version")
+                version_info = node.get("version")
+                if isinstance(version_info, dict):
+                    node_version = version_info.get("full")
+                else:
+                    node_version = version_info
                 
         return DeviceInfo(
             identifiers={(DOMAIN, f"node_{self.node_uuid}")},
@@ -136,6 +147,27 @@ class NetAppOntapNodeHealthSensor(CoordinatorEntity[NetAppOntapDataUpdateCoordin
                 state = node.get("state")
                 return state != "healthy"
         return True
+
+    @property
+    def extra_state_attributes(self) -> Dict[str, Any]:
+        """Return extra state attributes with active alerts/EMS events for this node."""
+        events = self.coordinator.data.get("events", [])
+        node_events = [
+            ev.get("message")
+            for ev in events
+            if self.node_name.lower() in ev.get("message", "").lower()
+        ]
+        
+        nodes = self.coordinator.data.get("nodes", [])
+        node_state = "unknown"
+        for node in nodes:
+            if node.get("uuid") == self.node_uuid:
+                node_state = node.get("state", "unknown")
+                
+        return {
+            "node_state": node_state,
+            "recent_alerts": node_events if node_events else ["No active alerts detected"],
+        }
 
 
 class NetAppOntapVolumeStatusSensor(CoordinatorEntity[NetAppOntapDataUpdateCoordinator], BinarySensorEntity):
