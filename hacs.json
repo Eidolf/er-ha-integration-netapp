@@ -1,0 +1,7 @@
+{
+  "name": "NetApp ONTAP",
+  "content_in_root": false,
+  "zip_release": false,
+  "filename": "netapp_ontap",
+  "render_readme": true
+}
