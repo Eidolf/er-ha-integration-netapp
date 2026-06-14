@@ -57,15 +57,31 @@ class NetAppOntapVolumeSwitch(CoordinatorEntity[NetAppOntapDataUpdateCoordinator
 
     @property
     def device_info(self) -> DeviceInfo:
-        """Return device info linking to the Volume device."""
-        cluster_info = self.coordinator.data.get("cluster", {})
-        cluster_uuid = cluster_info.get("uuid", self.entry.entry_id)
+        """Return device info linking to its Aggregate parent device."""
+        aggr_uuid = None
+        volumes = self.coordinator.data.get("volumes", [])
+        for vol in volumes:
+            if vol.get("uuid") == self.vol_uuid:
+                aggr_name = vol.get("aggregate", {}).get("name")
+                if aggr_name:
+                    for aggr in self.coordinator.data.get("aggregates", []):
+                        if aggr.get("name") == aggr_name:
+                            aggr_uuid = aggr.get("uuid")
+                            break
+                break
+
+        if aggr_uuid:
+            parent_link = (DOMAIN, f"aggregate_{aggr_uuid}")
+        else:
+            cluster_info = self.coordinator.data.get("cluster", {})
+            parent_link = (DOMAIN, f"cluster_{cluster_info.get('uuid', self.entry.entry_id)}")
+
         return DeviceInfo(
             identifiers={(DOMAIN, f"volume_{self.vol_uuid}")},
             name=f"Volume: {self.vol_name}",
             manufacturer="NetApp",
             model="ONTAP Volume",
-            via_device=(DOMAIN, f"cluster_{cluster_uuid}"),
+            via_device=parent_link,
         )
 
     @property

@@ -149,6 +149,14 @@ class NetAppOntapAPI:
         """Fetch licenses."""
         return await self._request("GET", "/api/cluster/licensing/licenses", params={"fields": "*"})
 
+    async def get_fc_ports(self) -> Dict[str, Any]:
+        """Fetch FC ports."""
+        return await self._request("GET", "/api/network/fc/ports", params={"fields": "*"})
+
+    async def get_cifs_shares(self) -> Dict[str, Any]:
+        """Fetch CIFS shares."""
+        return await self._request("GET", "/api/protocols/cifs/shares", params={"fields": "*"})
+
     async def set_volume_state(self, volume_uuid: str, state: str) -> bool:
         """Modify volume state (e.g. online, offline)."""
         # ONTAP REST API uses PATCH /api/storage/volumes/{uuid}

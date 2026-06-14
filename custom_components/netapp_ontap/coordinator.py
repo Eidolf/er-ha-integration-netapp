@@ -55,7 +55,9 @@ class NetAppOntapDataUpdateCoordinator(DataUpdateCoordinator[Dict[str, Any]]):
                 events_data = await self.api.get_events()
                 events = events_data.get("records", [])
 
-            # All Detail Level also polls cloud, svm, licenses
+            # All Detail Level also polls cloud, svm, licenses, fc ports, cifs shares
+            fc_ports = []
+            cifs_shares = []
             if self.detail_level == "all":
                 cloud_data = await self.api.get_cloud_targets()
                 cloud_targets = cloud_data.get("records", [])
@@ -63,6 +65,10 @@ class NetAppOntapDataUpdateCoordinator(DataUpdateCoordinator[Dict[str, Any]]):
                 svms = svm_data.get("records", [])
                 license_data = await self.api.get_licenses()
                 licenses = license_data.get("records", [])
+                fc_data = await self.api.get_fc_ports()
+                fc_ports = fc_data.get("records", [])
+                cifs_data = await self.api.get_cifs_shares()
+                cifs_shares = cifs_data.get("records", [])
 
             return {
                 "cluster": cluster_info,
@@ -74,6 +80,8 @@ class NetAppOntapDataUpdateCoordinator(DataUpdateCoordinator[Dict[str, Any]]):
                 "cloud_targets": cloud_targets,
                 "svms": svms,
                 "licenses": licenses,
+                "fc_ports": fc_ports,
+                "cifs_shares": cifs_shares,
             }
 
         except Exception as err:
