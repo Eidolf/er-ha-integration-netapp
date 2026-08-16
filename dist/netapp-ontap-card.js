@@ -31,9 +31,16 @@ class NetAppOntapCard extends HTMLElement {
 
     // Read attributes or fallback to mock data for presentation
     if (stateObj && stateObj.attributes && stateObj.attributes.cluster) {
+      const clusterRaw = { ...stateObj.attributes.cluster };
+      if (clusterRaw.version && typeof clusterRaw.version === 'object') {
+        clusterRaw.version = clusterRaw.version.full || `${clusterRaw.version.generation}.${clusterRaw.version.major}.${clusterRaw.version.minor}`;
+      }
       this.data = {
-        cluster: stateObj.attributes.cluster,
-        nodes: stateObj.attributes.nodes || [],
+        cluster: clusterRaw,
+        nodes: (stateObj.attributes.nodes || []).map(n => ({
+          ...n,
+          version: typeof n.version === 'object' && n.version ? (n.version.full || `${n.version.generation}.${n.version.major}`) : n.version
+        })),
         aggregates: stateObj.attributes.aggregates || [],
         volumes: stateObj.attributes.volumes || [],
         interfaces: stateObj.attributes.interfaces || [],
