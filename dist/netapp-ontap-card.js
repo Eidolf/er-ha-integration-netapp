@@ -31,13 +31,38 @@ class NetAppOntapCard extends HTMLElement {
 
     // Read attributes or fallback to mock data for presentation
     if (stateObj && stateObj.attributes && stateObj.attributes.cluster) {
+      const clusterRaw = { ...stateObj.attributes.cluster };
+      if (clusterRaw.version && typeof clusterRaw.version === 'object') {
+        clusterRaw.version = clusterRaw.version.full || `${clusterRaw.version.generation}.${clusterRaw.version.major}.${clusterRaw.version.minor}`;
+      }
       this.data = {
-        cluster: stateObj.attributes.cluster,
-        nodes: stateObj.attributes.nodes || [],
-        aggregates: stateObj.attributes.aggregates || [],
+        cluster: clusterRaw,
+        nodes: (stateObj.attributes.nodes || []).map(n => ({
+          ...n,
+          version: typeof n.version === 'object' && n.version ? (n.version.full || `${n.version.generation}.${n.version.major}`) : n.version
+        })),
+        aggregates: (stateObj.attributes.aggregates || []).map(a => {
+          const space = a.space || {};
+          const block = space.block_storage || a.block_storage || {};
+          const size = space.size || block.size || a.size || 0;
+          const used = space.used || block.used || a.used || 0;
+          const homeNodeObj = typeof a.home_node === 'object' && a.home_node ? a.home_node : { name: a.home_node || (a.node && a.node.name) || '' };
+          return {
+            ...a,
+            home_node: homeNodeObj,
+            space: {
+              ...space,
+              size: size,
+              used: used,
+            }
+          };
+        }),
         volumes: stateObj.attributes.volumes || [],
         interfaces: stateObj.attributes.interfaces || [],
-        events: stateObj.attributes.events || []
+        events: stateObj.attributes.events || [],
+        fc_ports: stateObj.attributes.fc_ports || [],
+        ethernet_ports: stateObj.attributes.ethernet_ports || [],
+        disks: stateObj.attributes.disks || []
       };
     } else {
       // Load rich Mock Data for WOW effect in preview/demo
@@ -63,6 +88,12 @@ class NetAppOntapCard extends HTMLElement {
       aggregates: [
         { uuid: 'aggr-1', name: 'aggr1_node1', state: 'online', space: { size: 10995116277760, used: 7696581394432 }, home_node: { name: 'ontap-node-01' } },
         { uuid: 'aggr-2', name: 'aggr2_node2', state: 'online', space: { size: 10995116277760, used: 4398046511104 }, home_node: { name: 'ontap-node-02' } }
+      ],
+      disks: [
+        { name: '1.0.0', state: 'present', type: 'SSD', model: 'X371_S163A960ATE', vendor: 'NETAPP', serial_number: 'S3Z9NA0N101', node: { name: 'ontap-node-01' } },
+        { name: '1.0.1', state: 'present', type: 'SSD', model: 'X371_S163A960ATE', vendor: 'NETAPP', serial_number: 'S3Z9NA0N102', node: { name: 'ontap-node-01' } },
+        { name: '1.0.2', state: 'present', type: 'SSD', model: 'X371_S163A960ATE', vendor: 'NETAPP', serial_number: 'S3Z9NA0N103', node: { name: 'ontap-node-02' } },
+        { name: '1.0.3', state: 'spare', type: 'SSD', model: 'X371_S163A960ATE', vendor: 'NETAPP', serial_number: 'S3Z9NA0N104', node: { name: 'ontap-node-02' } }
       ],
       volumes: [
         { uuid: 'vol-1', name: 'vol_db_prod', state: 'online', space: { size: 5497558138880, used: 4123168604160 }, aggregate: { name: 'aggr1_node1' }, metric: { iops: { total: 4250 }, latency: { total: 850 }, throughput: { total: 78643200 } } },
@@ -378,7 +409,8 @@ class NetAppOntapCard extends HTMLElement {
         </div>
         <div class="view-modes">
           <button class="mode-btn ${this.mode === 'diagram' ? 'active' : ''}" id="mode-diagram">Topology</button>
-          <button class="mode-btn ${this.mode === 'list' ? 'active' : ''}" id="mode-list">List</button>
+          <button class="mode-btn ${this.mode === 'list' ? 'active' : ''}" id="mode-list">Volumes</button>
+          <button class="mode-btn ${this.mode === 'disks' ? 'active' : ''}" id="mode-disks">Disks (${(this.data.disks || []).length})</button>
           <button class="mode-btn ${this.mode === 'metrics' ? 'active' : ''}" id="mode-metrics">Metrics</button>
         </div>
       </div>
@@ -395,10 +427,84 @@ class NetAppOntapCard extends HTMLElement {
       return this.renderDiagram();
     } else if (this.mode === 'list') {
       return this.renderList();
+    } else if (this.mode === 'disks') {
+      return this.renderDisks();
     } else if (this.mode === 'metrics') {
       return this.renderMetrics();
     }
     return '';
+  }
+
+  renderDisks() {
+    const disks = this.data.disks || [];
+    if (disks.length === 0) {
+      return `
+        <div style="text-align: center; color: var(--text-sub); padding: 24px;">
+          <ha-icon icon="mdi:harddisk-remove" style="font-size: 36px; margin-bottom: 8px;"></ha-icon>
+          <div>No physical disks discovered or monitoring detail level is set to Basic.</div>
+          <div style="font-size: 0.8rem; margin-top: 4px;">Enable 'Advanced' or 'All' in the integration settings to poll physical disks.</div>
+        </div>
+      `;
+    }
+
+    const spareCount = disks.filter(d => (d.state || '').toLowerCase() === 'spare').length;
+    const brokenCount = disks.filter(d => ['broken', 'failed', 'unresponsive'].includes((d.state || '').toLowerCase())).length;
+    const activeCount = disks.length - spareCount - brokenCount;
+
+    return `
+      <div style="display: flex; flex-direction: column; gap: 14px;">
+        <div class="metrics-grid" style="grid-template-columns: repeat(3, 1fr);">
+          <div class="metric-card">
+            <ha-icon icon="mdi:harddisk" style="color: var(--color-healthy); font-size: 22px;"></ha-icon>
+            <div style="font-size: 0.8rem; color: var(--text-sub); margin-top: 4px;">Active / Present</div>
+            <div class="metric-value">${activeCount}</div>
+          </div>
+          <div class="metric-card">
+            <ha-icon icon="mdi:harddisk-plus" style="color: var(--accent-color); font-size: 22px;"></ha-icon>
+            <div style="font-size: 0.8rem; color: var(--text-sub); margin-top: 4px;">Spares</div>
+            <div class="metric-value">${spareCount}</div>
+          </div>
+          <div class="metric-card">
+            <ha-icon icon="mdi:alert-circle" style="color: ${brokenCount > 0 ? 'var(--color-danger)' : 'var(--text-sub)'}; font-size: 22px;"></ha-icon>
+            <div style="font-size: 0.8rem; color: var(--text-sub); margin-top: 4px;">Failed / Broken</div>
+            <div class="metric-value" style="color: ${brokenCount > 0 ? 'var(--color-danger)' : 'inherit'};">${brokenCount}</div>
+          </div>
+        </div>
+
+        <div style="font-weight: 600; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 6px;">Physical Disks List</div>
+        <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 10px;">
+          ${disks.map(disk => {
+            const st = (disk.state || 'present').toLowerCase();
+            const badgeClass = st === 'spare' ? 'warning' : (st === 'broken' || st === 'failed' ? 'danger' : 'healthy');
+            const nodeName = typeof disk.node === 'object' && disk.node ? disk.node.name : (disk.node || 'Cluster');
+            return `
+              <div class="schematic-card" style="width: auto; padding: 12px;">
+                <div class="card-title">
+                  <span style="display: flex; align-items: center; gap: 6px;">
+                    <ha-icon icon="mdi:harddisk" style="font-size: 18px; color: var(--primary-color);"></ha-icon>
+                    ${disk.name}
+                  </span>
+                  <span class="badge ${badgeClass}">${disk.state || 'present'}</span>
+                </div>
+                <div class="info-row">
+                  <span>Type / Model:</span>
+                  <span>${disk.type || disk.class || 'Disk'} &bull; ${disk.model || 'Generic'}</span>
+                </div>
+                <div class="info-row">
+                  <span>Vendor:</span>
+                  <span>${disk.vendor || 'NetApp'}</span>
+                </div>
+                <div class="info-row">
+                  <span>Node:</span>
+                  <span>${nodeName}</span>
+                </div>
+                ${disk.serial_number ? `<div class="info-row"><span>S/N:</span><span style="font-size: 0.75rem;">${disk.serial_number}</span></div>` : ''}
+              </div>
+            `;
+          }).join('')}
+        </div>
+      </div>
+    `;
   }
 
   renderDiagram() {
@@ -618,10 +724,12 @@ class NetAppOntapCard extends HTMLElement {
     // Mode toggling
     const modeDiagram = this.shadowRoot.getElementById('mode-diagram');
     const modeList = this.shadowRoot.getElementById('mode-list');
+    const modeDisks = this.shadowRoot.getElementById('mode-disks');
     const modeMetrics = this.shadowRoot.getElementById('mode-metrics');
 
     if (modeDiagram) modeDiagram.addEventListener('click', () => { this.mode = 'diagram'; this.render(); });
     if (modeList) modeList.addEventListener('click', () => { this.mode = 'list'; this.render(); });
+    if (modeDisks) modeDisks.addEventListener('click', () => { this.mode = 'disks'; this.render(); });
     if (modeMetrics) modeMetrics.addEventListener('click', () => { this.mode = 'metrics'; this.render(); });
 
     // Drill down actions

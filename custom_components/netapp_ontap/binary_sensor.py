@@ -1,4 +1,5 @@
 """Binary sensor entities for NetApp ONTAP."""
+import re
 from typing import Any, Dict, Optional
 
 from homeassistant.components.binary_sensor import (
@@ -152,11 +153,36 @@ class NetAppOntapNodeHealthSensor(CoordinatorEntity[NetAppOntapDataUpdateCoordin
     def extra_state_attributes(self) -> Dict[str, Any]:
         """Return extra state attributes with active alerts/EMS events for this node."""
         events = self.coordinator.data.get("events", [])
-        node_events = [
-            ev.get("message")
-            for ev in events
-            if self.node_name.lower() in ev.get("message", "").lower()
-        ]
+        node_events = []
+        node_name_lower = (self.node_name or "").lower()
+        node_token_pattern = rf"\b{re.escape(node_name_lower)}\b" if node_name_lower else None
+
+        for ev in events:
+            if not isinstance(ev, dict):
+                continue
+            # Prefer log_message if present, falling back to message object
+            msg_obj = ev.get("log_message") if ev.get("log_message") is not None else ev.get("message")
+            msg_text = ""
+            if isinstance(msg_obj, str):
+                msg_text = msg_obj
+            elif isinstance(msg_obj, dict):
+                msg_text = msg_obj.get("text") or msg_obj.get("name") or msg_obj.get("message") or ""
+            elif msg_obj is not None:
+                msg_text = str(msg_obj)
+
+            # Check node match in node field, parameters, or message text
+            ev_node = ev.get("node", {})
+            ev_node_name = ev_node.get("name", "") if isinstance(ev_node, dict) else str(ev_node)
+            
+            node_matched = False
+            if ev_node_name and node_name_lower == ev_node_name.lower():
+                node_matched = True
+            elif node_token_pattern and re.search(node_token_pattern, msg_text, re.IGNORECASE):
+                node_matched = True
+
+            if node_matched:
+                node_events.append(msg_text or str(ev))
+
         
         nodes = self.coordinator.data.get("nodes", [])
         node_state = "unknown"

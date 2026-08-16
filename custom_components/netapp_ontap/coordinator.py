@@ -7,7 +7,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .const import DOMAIN, DEFAULT_UPDATE_INTERVAL
-from .api import NetAppOntapAPI
+from .api import NetAppOntapAPI, NetAppOntapAPIError
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -44,6 +44,7 @@ class NetAppOntapDataUpdateCoordinator(DataUpdateCoordinator[Dict[str, Any]]):
 
             interfaces = []
             events = []
+            disks = []
             cloud_targets = []
             svms = []
             licenses = []
@@ -54,9 +55,18 @@ class NetAppOntapDataUpdateCoordinator(DataUpdateCoordinator[Dict[str, Any]]):
                 interfaces = interfaces_data.get("records", [])
                 events_data = await self.api.get_events()
                 events = events_data.get("records", [])
+                try:
+                    disks_data = await self.api.get_disks()
+                    disks = disks_data.get("records", [])
+                except NetAppOntapAPIError as api_err:
+                    if api_err.status in (404, 405, 501):
+                        _LOGGER.debug("Disks endpoint not supported on this ONTAP system: %s", api_err)
+                    else:
+                        raise
 
-            # All Detail Level also polls cloud, svm, licenses, fc ports, cifs shares
+            # All Detail Level also polls cloud, svm, licenses, fc ports, ethernet ports, cifs shares
             fc_ports = []
+            ethernet_ports = []
             cifs_shares = []
             if self.detail_level == "all":
                 cloud_data = await self.api.get_cloud_targets()
@@ -67,6 +77,14 @@ class NetAppOntapDataUpdateCoordinator(DataUpdateCoordinator[Dict[str, Any]]):
                 licenses = license_data.get("records", [])
                 fc_data = await self.api.get_fc_ports()
                 fc_ports = fc_data.get("records", [])
+                try:
+                    eth_data = await self.api.get_ethernet_ports()
+                    ethernet_ports = eth_data.get("records", [])
+                except NetAppOntapAPIError as api_err:
+                    if api_err.status in (404, 405, 501):
+                        _LOGGER.debug("Ethernet ports endpoint not supported on this ONTAP system: %s", api_err)
+                    else:
+                        raise
                 cifs_data = await self.api.get_cifs_shares()
                 cifs_shares = cifs_data.get("records", [])
 
@@ -77,10 +95,12 @@ class NetAppOntapDataUpdateCoordinator(DataUpdateCoordinator[Dict[str, Any]]):
                 "aggregates": aggregates_data.get("records", []),
                 "interfaces": interfaces,
                 "events": events,
+                "disks": disks,
                 "cloud_targets": cloud_targets,
                 "svms": svms,
                 "licenses": licenses,
                 "fc_ports": fc_ports,
+                "ethernet_ports": ethernet_ports,
                 "cifs_shares": cifs_shares,
             }
 
