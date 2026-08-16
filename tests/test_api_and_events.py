@@ -113,7 +113,7 @@ class TestNetAppOntapAPI(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(mock_req.call_count, 2)
 
     async def test_reject_untrusted_pagination_urls(self):
-        """Test that external or non-HTTPS URLs in pagination/request are rejected."""
+        """Test that external, non-HTTPS, or mismatched URLs are rejected and valid HTTPS default 443 URLs are accepted."""
         api = NetAppOntapAPI("192.168.1.50", 443, username="admin", password="password")
 
         # External host
@@ -125,6 +125,25 @@ class TestNetAppOntapAPI(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(NetAppOntapAPIError) as ctx2:
             await api._request("GET", "http://192.168.1.50:443/api/storage/disks")
         self.assertIn("Untrusted", str(ctx2.exception))
+
+        # Userinfo in URL
+        with self.assertRaises(NetAppOntapAPIError) as ctx3:
+            await api._request("GET", "https://user:pass@192.168.1.50:443/api/storage/disks")
+        self.assertIn("Untrusted", str(ctx3.exception))
+
+        # Port mismatch
+        with self.assertRaises(NetAppOntapAPIError) as ctx4:
+            await api._request("GET", "https://192.168.1.50:8443/api/storage/disks")
+        self.assertIn("Untrusted", str(ctx4.exception))
+
+        # Valid HTTPS with omitted default port 443 accepted
+        with patch.object(api.session, "request") as mock_req:
+            mock_resp = AsyncMock()
+            mock_resp.status = 200
+            mock_resp.json = AsyncMock(return_value={"records": []})
+            mock_req.return_value.__aenter__.return_value = mock_resp
+            res = await api._request("GET", "https://192.168.1.50/api/storage/disks")
+            self.assertEqual(res, {"records": []})
 
 
 class TestNetAppCoordinatorFailurePolicy(unittest.IsolatedAsyncioTestCase):

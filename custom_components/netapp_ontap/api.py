@@ -60,7 +60,15 @@ class NetAppOntapAPI:
         parsed_base = urlparse(self.base_url)
         if path.startswith("http://") or path.startswith("https://"):
             parsed_target = urlparse(path)
-            if parsed_target.scheme != "https" or parsed_target.netloc.lower() != parsed_base.netloc.lower():
+            base_port = parsed_base.port or 443
+            target_port = parsed_target.port or 443
+            if (
+                parsed_target.scheme != "https"
+                or (parsed_target.hostname or "").lower() != (parsed_base.hostname or "").lower()
+                or target_port != base_port
+                or parsed_target.username is not None
+                or parsed_target.password is not None
+            ):
                 raise NetAppOntapAPIError(400, f"Untrusted or invalid target URL: {path}")
             url = path
         else:
