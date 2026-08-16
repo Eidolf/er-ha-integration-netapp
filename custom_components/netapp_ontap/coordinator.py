@@ -7,7 +7,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .const import DOMAIN, DEFAULT_UPDATE_INTERVAL
-from .api import NetAppOntapAPI
+from .api import NetAppOntapAPI, NetAppOntapAPIError
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -58,6 +58,11 @@ class NetAppOntapDataUpdateCoordinator(DataUpdateCoordinator[Dict[str, Any]]):
                 try:
                     disks_data = await self.api.get_disks()
                     disks = disks_data.get("records", [])
+                except NetAppOntapAPIError as api_err:
+                    if api_err.status in (404, 405, 501):
+                        _LOGGER.debug("Disks endpoint not supported on this ONTAP system: %s", api_err)
+                    else:
+                        raise
                 except Exception as disk_err:
                     _LOGGER.debug("Disks endpoint query failed or not supported: %s", disk_err)
 
@@ -74,8 +79,16 @@ class NetAppOntapDataUpdateCoordinator(DataUpdateCoordinator[Dict[str, Any]]):
                 licenses = license_data.get("records", [])
                 fc_data = await self.api.get_fc_ports()
                 fc_ports = fc_data.get("records", [])
-                eth_data = await self.api.get_ethernet_ports()
-                ethernet_ports = eth_data.get("records", [])
+                try:
+                    eth_data = await self.api.get_ethernet_ports()
+                    ethernet_ports = eth_data.get("records", [])
+                except NetAppOntapAPIError as api_err:
+                    if api_err.status in (404, 405, 501):
+                        _LOGGER.debug("Ethernet ports endpoint not supported on this ONTAP system: %s", api_err)
+                    else:
+                        raise
+                except Exception as eth_err:
+                    _LOGGER.debug("Ethernet ports endpoint query failed: %s", eth_err)
                 cifs_data = await self.api.get_cifs_shares()
                 cifs_shares = cifs_data.get("records", [])
 

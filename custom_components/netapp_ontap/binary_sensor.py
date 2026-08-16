@@ -1,4 +1,5 @@
 """Binary sensor entities for NetApp ONTAP."""
+import re
 from typing import Any, Dict, Optional
 
 from homeassistant.components.binary_sensor import (
@@ -154,11 +155,13 @@ class NetAppOntapNodeHealthSensor(CoordinatorEntity[NetAppOntapDataUpdateCoordin
         events = self.coordinator.data.get("events", [])
         node_events = []
         node_name_lower = (self.node_name or "").lower()
+        node_token_pattern = rf"\b{re.escape(node_name_lower)}\b" if node_name_lower else None
+
         for ev in events:
             if not isinstance(ev, dict):
                 continue
-            # Extract event message text (can be string or dict with text/name/message)
-            msg_obj = ev.get("message")
+            # Prefer log_message if present, falling back to message object
+            msg_obj = ev.get("log_message") if ev.get("log_message") is not None else ev.get("message")
             msg_text = ""
             if isinstance(msg_obj, str):
                 msg_text = msg_obj
@@ -171,10 +174,13 @@ class NetAppOntapNodeHealthSensor(CoordinatorEntity[NetAppOntapDataUpdateCoordin
             ev_node = ev.get("node", {})
             ev_node_name = ev_node.get("name", "") if isinstance(ev_node, dict) else str(ev_node)
             
-            if (
-                (ev_node_name and node_name_lower == ev_node_name.lower())
-                or (node_name_lower and node_name_lower in msg_text.lower())
-            ):
+            node_matched = False
+            if ev_node_name and node_name_lower == ev_node_name.lower():
+                node_matched = True
+            elif node_token_pattern and re.search(node_token_pattern, msg_text, re.IGNORECASE):
+                node_matched = True
+
+            if node_matched:
                 node_events.append(msg_text or str(ev))
 
         

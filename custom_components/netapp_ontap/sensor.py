@@ -161,6 +161,9 @@ class NetAppOntapTopologySensor(CoordinatorEntity[NetAppOntapDataUpdateCoordinat
             "volumes": self.coordinator.data.get("volumes", []),
             "interfaces": self.coordinator.data.get("interfaces", []),
             "events": self.coordinator.data.get("events", []),
+            "fc_ports_count": len(self.coordinator.data.get("fc_ports", [])),
+            "ethernet_ports_count": len(self.coordinator.data.get("ethernet_ports", [])),
+            "disks_count": len(self.coordinator.data.get("disks", [])),
             "fc_ports": self.coordinator.data.get("fc_ports", []),
             "ethernet_ports": self.coordinator.data.get("ethernet_ports", []),
             "disks": self.coordinator.data.get("disks", []),
@@ -711,7 +714,7 @@ class NetAppOntapEthernetPortSensor(CoordinatorEntity[NetAppOntapDataUpdateCoord
                 if isinstance(state, dict):
                     return state.get("operational") or "up"
                 return state or ("up" if port.get("enabled", True) else "down")
-        return "up"
+        return None
 
     @property
     def extra_state_attributes(self) -> Dict[str, Any]:
@@ -890,7 +893,7 @@ class NetAppOntapDiskSensor(CoordinatorEntity[NetAppOntapDataUpdateCoordinator])
         for d in disks:
             if d.get("name") == self.disk_name:
                 return d.get("state", "present")
-        return "present"
+        return None
 
     @property
     def extra_state_attributes(self) -> Dict[str, Any]:

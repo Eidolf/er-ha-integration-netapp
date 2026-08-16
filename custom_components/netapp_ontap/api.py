@@ -7,6 +7,15 @@ import time
 
 _LOGGER = logging.getLogger(__name__)
 
+class NetAppOntapAPIError(Exception):
+    """Exception for NetApp ONTAP API errors carrying status code."""
+
+    def __init__(self, status: int, message: str) -> None:
+        super().__init__(f"HTTP {status}: {message}")
+        self.status = status
+        self.message = message
+
+
 class NetAppOntapAPI:
     """API Client for NetApp ONTAP."""
 
@@ -47,7 +56,7 @@ class NetAppOntapAPI:
         retries: int = 3,
     ) -> Any:
         """Make an async request to the ONTAP API."""
-        url = f"{self.base_url}{path}"
+        url = f"{self.base_url}{path}" if not path.startswith("http") else path
         headers = {"Content-Type": "application/json"}
 
         # Set up Auth
@@ -80,11 +89,12 @@ class NetAppOntapAPI:
                     ssl=self.verify_ssl,
                 ) as response:
                     if response.status in (401, 403):
-                        raise Exception("Authentication failed")
+                        error_text = await response.text()
+                        raise NetAppOntapAPIError(response.status, f"Authentication failed: {error_text}")
                     
                     if response.status >= 400:
                         error_text = await response.text()
-                        raise Exception(f"HTTP {response.status}: {error_text}")
+                        raise NetAppOntapAPIError(response.status, error_text)
 
                     if response.status == 204:
                         return True
@@ -101,9 +111,33 @@ class NetAppOntapAPI:
                 if attempt == retries - 1:
                     raise Exception(f"Cannot connect to {self.host}") from err
                 await asyncio.sleep(1 * (attempt + 1))
+            except NetAppOntapAPIError:
+                raise
             except Exception as err:
                 _LOGGER.error("API error during %s request to %s: %s", method, url, err)
                 raise err
+
+    async def _request_all_pages(self, path: str, params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        """Fetch all records following _links.next pagination links."""
+        res = await self._request("GET", path, params=params)
+        if not isinstance(res, dict):
+            return res
+
+        all_records = list(res.get("records", []))
+        next_link = res.get("_links", {}).get("next", {}).get("href")
+
+        while next_link:
+            next_res = await self._request("GET", next_link)
+            if not isinstance(next_res, dict):
+                break
+            all_records.extend(next_res.get("records", []))
+            next_link = next_res.get("_links", {}).get("next", {}).get("href")
+
+        return {
+            **res,
+            "records": all_records,
+            "num_records": len(all_records),
+        }
 
     async def test_connection(self) -> bool:
         """Test authentication and connectivity."""
@@ -131,7 +165,10 @@ class NetAppOntapAPI:
 
     async def get_disks(self) -> Dict[str, Any]:
         """Fetch physical disks."""
-        return await self._request("GET", "/api/storage/disks", params={"fields": "*"})
+        return await self._request_all_pages(
+            "/api/storage/disks",
+            params={"fields": "name,uid,serial_number,state,type,class,model,vendor,rpm,firmware_version,node.name"},
+        )
 
     async def get_interfaces(self) -> Dict[str, Any]:
         """Fetch ethernet and SAN interfaces."""
@@ -159,7 +196,10 @@ class NetAppOntapAPI:
 
     async def get_ethernet_ports(self) -> Dict[str, Any]:
         """Fetch Ethernet ports."""
-        return await self._request("GET", "/api/network/ethernet/ports", params={"fields": "*"})
+        return await self._request_all_pages(
+            "/api/network/ethernet/ports",
+            params={"fields": "uuid,name,node.name,state,enabled,type,speed,mac_address,mtu,broadcast_domain.name"},
+        )
 
     async def get_cifs_shares(self) -> Dict[str, Any]:
         """Fetch CIFS shares."""
