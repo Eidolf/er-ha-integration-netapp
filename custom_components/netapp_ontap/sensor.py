@@ -99,6 +99,16 @@ async def async_setup_entry(
             if share_name:
                 entities.append(NetAppOntapCifsShareSensor(coordinator, entry, share_name, svm_name))
 
+    # Add disk count and disk entities if available in advanced/all detail level
+    disks = coordinator.data.get("disks", [])
+    if disks:
+        entities.append(NetAppOntapDiskOverviewSensor(coordinator, entry))
+        for disk in disks:
+            disk_name = disk.get("name")
+            disk_uid = disk.get("uid") or disk.get("serial_number") or disk_name
+            if disk_name:
+                entities.append(NetAppOntapDiskSensor(coordinator, entry, disk_name, disk_uid))
+
     async_add_entities(entities, update_before_add=True)
 
 
@@ -153,6 +163,7 @@ class NetAppOntapTopologySensor(CoordinatorEntity[NetAppOntapDataUpdateCoordinat
             "events": self.coordinator.data.get("events", []),
             "fc_ports": self.coordinator.data.get("fc_ports", []),
             "ethernet_ports": self.coordinator.data.get("ethernet_ports", []),
+            "disks": self.coordinator.data.get("disks", []),
         }
 
 
@@ -336,10 +347,33 @@ class NetAppOntapAggregateUsageSensor(CoordinatorEntity[NetAppOntapDataUpdateCoo
         for aggr in aggrs:
             if aggr.get("uuid") == self.aggr_uuid:
                 space = aggr.get("space", {})
-                size = space.get("size", 1)
-                used = space.get("used", 0)
+                block_storage = space.get("block_storage", {}) if isinstance(space, dict) else {}
+                if not block_storage and isinstance(aggr.get("block_storage"), dict):
+                    block_storage = aggr.get("block_storage")
+
+                size = (
+                    space.get("size")
+                    or block_storage.get("size")
+                    or aggr.get("size")
+                    or 0
+                )
+                used = (
+                    space.get("used")
+                    or block_storage.get("used")
+                    or aggr.get("used")
+                    or 0
+                )
+
                 if size > 0:
                     return round((used / size) * 100, 2)
+                
+                # Check if percent_used is directly provided by ONTAP
+                if "percent_used" in space:
+                    return float(space["percent_used"])
+                if "percent_used" in block_storage:
+                    return float(block_storage["percent_used"])
+                if "percent_used" in aggr:
+                    return float(aggr["percent_used"])
         return None
 
 
@@ -358,8 +392,19 @@ class NetAppOntapAggregateCapacitySensor(NetAppOntapAggregateUsageSensor):
         aggrs = self.coordinator.data.get("aggregates", [])
         for aggr in aggrs:
             if aggr.get("uuid") == self.aggr_uuid:
-                size_bytes = aggr.get("space", {}).get("size", 0)
-                return round(size_bytes / (1024 ** 3), 2)
+                space = aggr.get("space", {})
+                block_storage = space.get("block_storage", {}) if isinstance(space, dict) else {}
+                if not block_storage and isinstance(aggr.get("block_storage"), dict):
+                    block_storage = aggr.get("block_storage")
+
+                size_bytes = (
+                    space.get("size")
+                    or block_storage.get("size")
+                    or aggr.get("size")
+                    or 0
+                )
+                if size_bytes > 0:
+                    return round(size_bytes / (1024 ** 3), 2)
         return None
 
 
@@ -378,8 +423,19 @@ class NetAppOntapAggregateUsedBytesSensor(NetAppOntapAggregateUsageSensor):
         aggrs = self.coordinator.data.get("aggregates", [])
         for aggr in aggrs:
             if aggr.get("uuid") == self.aggr_uuid:
-                used_bytes = aggr.get("space", {}).get("used", 0)
-                return round(used_bytes / (1024 ** 3), 2)
+                space = aggr.get("space", {})
+                block_storage = space.get("block_storage", {}) if isinstance(space, dict) else {}
+                if not block_storage and isinstance(aggr.get("block_storage"), dict):
+                    block_storage = aggr.get("block_storage")
+
+                used_bytes = (
+                    space.get("used")
+                    or block_storage.get("used")
+                    or aggr.get("used")
+                    or 0
+                )
+                if used_bytes > 0:
+                    return round(used_bytes / (1024 ** 3), 2)
         return None
 
 
@@ -710,3 +766,146 @@ class NetAppOntapCifsShareSensor(CoordinatorEntity[NetAppOntapDataUpdateCoordina
             if share.get("name") == self.share_name:
                 return share.get("path", "Unknown path")
         return f"\\\\{self.svm_name or 'storage'}\\{self.share_name}"
+
+
+class NetAppOntapDiskOverviewSensor(CoordinatorEntity[NetAppOntapDataUpdateCoordinator]):
+    """Sensor reporting total disk count and broken/spare summary."""
+
+    def __init__(
+        self,
+        coordinator: NetAppOntapDataUpdateCoordinator,
+        entry: ConfigEntry,
+    ) -> None:
+        """Initialize Disk Overview sensor."""
+        super().__init__(coordinator)
+        self.entry = entry
+        self._attr_name = f"{entry.title} Total Physical Disks"
+        self._attr_unique_id = f"{entry.entry_id}_disks_total"
+        self._attr_icon = "mdi:harddisk"
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        """Link to Cluster."""
+        cluster_info = self.coordinator.data.get("cluster", {})
+        cluster_uuid = cluster_info.get("uuid", self.entry.entry_id)
+        return DeviceInfo(
+            identifiers={(DOMAIN, f"cluster_{cluster_uuid}")},
+            name=f"Cluster: {cluster_info.get('name', self.entry.title)}",
+        )
+
+    @property
+    def state(self) -> int:
+        """Return total number of disks."""
+        disks = self.coordinator.data.get("disks", [])
+        return len(disks)
+
+    @property
+    def extra_state_attributes(self) -> Dict[str, Any]:
+        """Return disk status counters and details."""
+        disks = self.coordinator.data.get("disks", [])
+        spare_count = 0
+        broken_count = 0
+        present_count = 0
+        for d in disks:
+            st = (d.get("state") or "").lower()
+            if st == "spare":
+                spare_count += 1
+            elif st in ("broken", "failed", "unresponsive"):
+                broken_count += 1
+            else:
+                present_count += 1
+
+        return {
+            "total_disks": len(disks),
+            "spare_disks": spare_count,
+            "broken_disks": broken_count,
+            "active_disks": present_count,
+            "disks": [
+                {
+                    "name": d.get("name"),
+                    "state": d.get("state"),
+                    "type": d.get("type") or d.get("class"),
+                    "model": d.get("model"),
+                    "vendor": d.get("vendor"),
+                    "serial_number": d.get("serial_number"),
+                    "node": d.get("node", {}).get("name") if isinstance(d.get("node"), dict) else d.get("node"),
+                }
+                for d in disks
+            ],
+        }
+
+
+class NetAppOntapDiskSensor(CoordinatorEntity[NetAppOntapDataUpdateCoordinator]):
+    """Individual Physical Disk status sensor."""
+
+    def __init__(
+        self,
+        coordinator: NetAppOntapDataUpdateCoordinator,
+        entry: ConfigEntry,
+        disk_name: str,
+        disk_uid: str,
+    ) -> None:
+        """Initialize Disk sensor."""
+        super().__init__(coordinator)
+        self.disk_name = disk_name
+        self.disk_uid = disk_uid
+        self.entry = entry
+        self._attr_name = f"NetApp Disk {disk_name} State"
+        self._attr_unique_id = f"{entry.entry_id}_disk_{disk_uid}"
+        self._attr_icon = "mdi:harddisk"
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        """Link to Node if known, else Cluster."""
+        node_name = None
+        disks = self.coordinator.data.get("disks", [])
+        for d in disks:
+            if d.get("name") == self.disk_name:
+                node_name = d.get("node", {}).get("name") if isinstance(d.get("node"), dict) else d.get("node")
+                break
+
+        node_uuid = None
+        if node_name:
+            for node in self.coordinator.data.get("nodes", []):
+                if node.get("name") == node_name:
+                    node_uuid = node.get("uuid")
+                    break
+
+        if node_uuid:
+            return DeviceInfo(
+                identifiers={(DOMAIN, f"node_{node_uuid}")},
+                name=f"Node: {node_name}",
+            )
+
+        cluster_info = self.coordinator.data.get("cluster", {})
+        cluster_uuid = cluster_info.get("uuid", self.entry.entry_id)
+        return DeviceInfo(
+            identifiers={(DOMAIN, f"cluster_{cluster_uuid}")},
+            name=f"Cluster: {cluster_info.get('name', self.entry.title)}",
+        )
+
+    @property
+    def state(self) -> Optional[str]:
+        disks = self.coordinator.data.get("disks", [])
+        for d in disks:
+            if d.get("name") == self.disk_name:
+                return d.get("state", "present")
+        return "present"
+
+    @property
+    def extra_state_attributes(self) -> Dict[str, Any]:
+        """Return individual disk hardware attributes."""
+        disks = self.coordinator.data.get("disks", [])
+        for d in disks:
+            if d.get("name") == self.disk_name:
+                return {
+                    "model": d.get("model"),
+                    "vendor": d.get("vendor"),
+                    "serial_number": d.get("serial_number"),
+                    "type": d.get("type"),
+                    "class": d.get("class"),
+                    "rpm": d.get("rpm"),
+                    "firmware_version": d.get("firmware_version"),
+                    "node": d.get("node", {}).get("name") if isinstance(d.get("node"), dict) else d.get("node"),
+                }
+        return {}

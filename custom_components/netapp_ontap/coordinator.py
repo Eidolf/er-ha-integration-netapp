@@ -44,6 +44,7 @@ class NetAppOntapDataUpdateCoordinator(DataUpdateCoordinator[Dict[str, Any]]):
 
             interfaces = []
             events = []
+            disks = []
             cloud_targets = []
             svms = []
             licenses = []
@@ -54,6 +55,11 @@ class NetAppOntapDataUpdateCoordinator(DataUpdateCoordinator[Dict[str, Any]]):
                 interfaces = interfaces_data.get("records", [])
                 events_data = await self.api.get_events()
                 events = events_data.get("records", [])
+                try:
+                    disks_data = await self.api.get_disks()
+                    disks = disks_data.get("records", [])
+                except Exception as disk_err:
+                    _LOGGER.debug("Disks endpoint query failed or not supported: %s", disk_err)
 
             # All Detail Level also polls cloud, svm, licenses, fc ports, ethernet ports, cifs shares
             fc_ports = []
@@ -80,6 +86,7 @@ class NetAppOntapDataUpdateCoordinator(DataUpdateCoordinator[Dict[str, Any]]):
                 "aggregates": aggregates_data.get("records", []),
                 "interfaces": interfaces,
                 "events": events,
+                "disks": disks,
                 "cloud_targets": cloud_targets,
                 "svms": svms,
                 "licenses": licenses,
