@@ -46,8 +46,10 @@ class NetAppOntapCard extends HTMLElement {
           const block = space.block_storage || a.block_storage || {};
           const size = space.size || block.size || a.size || 0;
           const used = space.used || block.used || a.used || 0;
+          const homeNodeObj = typeof a.home_node === 'object' && a.home_node ? a.home_node : { name: a.home_node || (a.node && a.node.name) || '' };
           return {
             ...a,
+            home_node: homeNodeObj,
             space: {
               ...space,
               size: size,
