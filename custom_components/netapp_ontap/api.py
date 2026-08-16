@@ -172,7 +172,11 @@ class NetAppOntapAPI:
 
     async def get_aggregates(self) -> Dict[str, Any]:
         """Fetch storage aggregates."""
-        return await self._request("GET", "/api/storage/aggregates", params={"fields": "*,space.*,space.block_storage.*,home_node.*,block_storage.*"})
+        return await self._request(
+            "GET",
+            "/api/storage/aggregates",
+            params={"fields": "name,uuid,state,home_node.name,home_node.uuid,space.block_storage.size,space.block_storage.used,space.block_storage.available,space.percent_used,space.size,space.used,block_storage.size,block_storage.used"},
+        )
 
     async def get_disks(self) -> Dict[str, Any]:
         """Fetch physical disks."""
