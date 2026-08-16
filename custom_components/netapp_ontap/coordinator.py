@@ -63,8 +63,6 @@ class NetAppOntapDataUpdateCoordinator(DataUpdateCoordinator[Dict[str, Any]]):
                         _LOGGER.debug("Disks endpoint not supported on this ONTAP system: %s", api_err)
                     else:
                         raise
-                except Exception as disk_err:
-                    _LOGGER.debug("Disks endpoint query failed or not supported: %s", disk_err)
 
             # All Detail Level also polls cloud, svm, licenses, fc ports, ethernet ports, cifs shares
             fc_ports = []
@@ -87,8 +85,6 @@ class NetAppOntapDataUpdateCoordinator(DataUpdateCoordinator[Dict[str, Any]]):
                         _LOGGER.debug("Ethernet ports endpoint not supported on this ONTAP system: %s", api_err)
                     else:
                         raise
-                except Exception as eth_err:
-                    _LOGGER.debug("Ethernet ports endpoint query failed: %s", eth_err)
                 cifs_data = await self.api.get_cifs_shares()
                 cifs_shares = cifs_data.get("records", [])
 

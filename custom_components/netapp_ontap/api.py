@@ -4,6 +4,7 @@ import asyncio
 import aiohttp
 from typing import Any, Dict, List, Optional
 import time
+from urllib.parse import urlparse, urljoin
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -56,7 +57,17 @@ class NetAppOntapAPI:
         retries: int = 3,
     ) -> Any:
         """Make an async request to the ONTAP API."""
-        url = f"{self.base_url}{path}" if not path.startswith("http") else path
+        parsed_base = urlparse(self.base_url)
+        if path.startswith("http://") or path.startswith("https://"):
+            parsed_target = urlparse(path)
+            if parsed_target.scheme != "https" or parsed_target.netloc.lower() != parsed_base.netloc.lower():
+                raise NetAppOntapAPIError(400, f"Untrusted or invalid target URL: {path}")
+            url = path
+        else:
+            if not path.startswith("/"):
+                path = f"/{path}"
+            url = f"{self.base_url}{path}"
+
         headers = {"Content-Type": "application/json"}
 
         # Set up Auth
