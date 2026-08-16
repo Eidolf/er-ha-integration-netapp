@@ -55,8 +55,9 @@ class NetAppOntapDataUpdateCoordinator(DataUpdateCoordinator[Dict[str, Any]]):
                 events_data = await self.api.get_events()
                 events = events_data.get("records", [])
 
-            # All Detail Level also polls cloud, svm, licenses, fc ports, cifs shares
+            # All Detail Level also polls cloud, svm, licenses, fc ports, ethernet ports, cifs shares
             fc_ports = []
+            ethernet_ports = []
             cifs_shares = []
             if self.detail_level == "all":
                 cloud_data = await self.api.get_cloud_targets()
@@ -67,6 +68,8 @@ class NetAppOntapDataUpdateCoordinator(DataUpdateCoordinator[Dict[str, Any]]):
                 licenses = license_data.get("records", [])
                 fc_data = await self.api.get_fc_ports()
                 fc_ports = fc_data.get("records", [])
+                eth_data = await self.api.get_ethernet_ports()
+                ethernet_ports = eth_data.get("records", [])
                 cifs_data = await self.api.get_cifs_shares()
                 cifs_shares = cifs_data.get("records", [])
 
@@ -81,6 +84,7 @@ class NetAppOntapDataUpdateCoordinator(DataUpdateCoordinator[Dict[str, Any]]):
                 "svms": svms,
                 "licenses": licenses,
                 "fc_ports": fc_ports,
+                "ethernet_ports": ethernet_ports,
                 "cifs_shares": cifs_shares,
             }
 

@@ -44,7 +44,9 @@ class NetAppOntapCard extends HTMLElement {
         aggregates: stateObj.attributes.aggregates || [],
         volumes: stateObj.attributes.volumes || [],
         interfaces: stateObj.attributes.interfaces || [],
-        events: stateObj.attributes.events || []
+        events: stateObj.attributes.events || [],
+        fc_ports: stateObj.attributes.fc_ports || [],
+        ethernet_ports: stateObj.attributes.ethernet_ports || []
       };
     } else {
       // Load rich Mock Data for WOW effect in preview/demo

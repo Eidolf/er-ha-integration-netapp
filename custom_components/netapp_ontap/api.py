@@ -153,6 +153,10 @@ class NetAppOntapAPI:
         """Fetch FC ports."""
         return await self._request("GET", "/api/network/fc/ports", params={"fields": "*"})
 
+    async def get_ethernet_ports(self) -> Dict[str, Any]:
+        """Fetch Ethernet ports."""
+        return await self._request("GET", "/api/network/ethernet/ports", params={"fields": "*"})
+
     async def get_cifs_shares(self) -> Dict[str, Any]:
         """Fetch CIFS shares."""
         return await self._request("GET", "/api/protocols/cifs/shares", params={"fields": "*"})

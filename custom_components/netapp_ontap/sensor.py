@@ -84,6 +84,14 @@ async def async_setup_entry(
             if fc_uuid and fc_name:
                 entities.append(NetAppOntapFcPortSensor(coordinator, entry, fc_uuid, fc_name))
 
+        ethernet_ports = coordinator.data.get("ethernet_ports", [])
+        for eth in ethernet_ports:
+            eth_uuid = eth.get("uuid")
+            eth_name = eth.get("name")
+            node_name = eth.get("node", {}).get("name") if isinstance(eth.get("node"), dict) else eth.get("node")
+            if eth_uuid and eth_name:
+                entities.append(NetAppOntapEthernetPortSensor(coordinator, entry, eth_uuid, eth_name, node_name))
+
         cifs_shares = coordinator.data.get("cifs_shares", [])
         for share in cifs_shares:
             share_name = share.get("name")
@@ -143,6 +151,8 @@ class NetAppOntapTopologySensor(CoordinatorEntity[NetAppOntapDataUpdateCoordinat
             "volumes": self.coordinator.data.get("volumes", []),
             "interfaces": self.coordinator.data.get("interfaces", []),
             "events": self.coordinator.data.get("events", []),
+            "fc_ports": self.coordinator.data.get("fc_ports", []),
+            "ethernet_ports": self.coordinator.data.get("ethernet_ports", []),
         }
 
 
@@ -589,6 +599,79 @@ class NetAppOntapFcPortSensor(CoordinatorEntity[NetAppOntapDataUpdateCoordinator
             if fc.get("uuid") == self.fc_uuid:
                 return fc.get("state", "startup")
         return "online"
+
+
+class NetAppOntapEthernetPortSensor(CoordinatorEntity[NetAppOntapDataUpdateCoordinator]):
+    """Ethernet Port status sensor."""
+
+    def __init__(
+        self,
+        coordinator: NetAppOntapDataUpdateCoordinator,
+        entry: ConfigEntry,
+        eth_uuid: str,
+        eth_name: str,
+        node_name: Optional[str] = None,
+    ) -> None:
+        """Initialize Ethernet Port sensor."""
+        super().__init__(coordinator)
+        self.eth_uuid = eth_uuid
+        self.eth_name = eth_name
+        self.node_name = node_name
+        self.entry = entry
+        self._attr_name = f"NetApp Port {eth_name} State"
+        self._attr_unique_id = f"{entry.entry_id}_eth_{eth_uuid}"
+        self._attr_icon = "mdi:ethernet-cable"
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        """Link to Node if known, else Cluster."""
+        node_uuid = None
+        if self.node_name:
+            for node in self.coordinator.data.get("nodes", []):
+                if node.get("name") == self.node_name:
+                    node_uuid = node.get("uuid")
+                    break
+
+        if node_uuid:
+            return DeviceInfo(
+                identifiers={(DOMAIN, f"node_{node_uuid}")},
+                name=f"Node: {self.node_name}",
+            )
+
+        cluster_info = self.coordinator.data.get("cluster", {})
+        cluster_uuid = cluster_info.get("uuid", self.entry.entry_id)
+        return DeviceInfo(
+            identifiers={(DOMAIN, f"cluster_{cluster_uuid}")},
+            name=f"Cluster: {cluster_info.get('name', self.entry.title)}",
+        )
+
+    @property
+    def state(self) -> Optional[str]:
+        ports = self.coordinator.data.get("ethernet_ports", [])
+        for port in ports:
+            if port.get("uuid") == self.eth_uuid:
+                # State can be 'up' or 'down' or in state.operational
+                state = port.get("state")
+                if isinstance(state, dict):
+                    return state.get("operational") or "up"
+                return state or ("up" if port.get("enabled", True) else "down")
+        return "up"
+
+    @property
+    def extra_state_attributes(self) -> Dict[str, Any]:
+        """Return extra state attributes like speed, type, mac, mtu."""
+        ports = self.coordinator.data.get("ethernet_ports", [])
+        for port in ports:
+            if port.get("uuid") == self.eth_uuid:
+                return {
+                    "node": self.node_name,
+                    "type": port.get("type"),
+                    "speed": port.get("speed"),
+                    "mac_address": port.get("mac_address"),
+                    "mtu": port.get("mtu"),
+                    "broadcast_domain": port.get("broadcast_domain", {}).get("name") if isinstance(port.get("broadcast_domain"), dict) else port.get("broadcast_domain"),
+                }
+        return {}
 
 
 class NetAppOntapCifsShareSensor(CoordinatorEntity[NetAppOntapDataUpdateCoordinator]):
